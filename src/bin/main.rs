@@ -12,6 +12,7 @@ use inkwell::passes::PassManager;
 use inkwell::OptimizationLevel;
 
 use crate::Token::*;
+use kaleidoscope::cli;
 use kaleidoscope::compiler::Compiler;
 use kaleidoscope::types::{Expr, Function, Prototype};
 
@@ -814,19 +815,11 @@ static EXTERNAL_FNS: [extern "C" fn(f64) -> f64; 2] = [putchard, printd];
 
 /// Entry point of the program; acts as a REPL.
 pub fn main() {
-    // use self::inkwell::support::add_symbol;
-    let mut display_lexer_output = false;
-    let mut display_parser_output = false;
-    let mut display_compiler_output = false;
-
-    for arg in std::env::args() {
-        match arg.as_str() {
-            "--dl" => display_lexer_output = true,
-            "--dp" => display_parser_output = true,
-            "--dc" => display_compiler_output = true,
-            _ => (),
-        }
-    }
+    let cli::Args {
+        lexer: display_lexer_output,
+        parser: display_parser_output,
+        compiler: display_compiler_output,
+    } = cli::opts();
 
     let context = Context::create();
     let module = context.create_module("repl");
@@ -852,14 +845,6 @@ pub fn main() {
         println!();
         print_flush!("?> ");
 
-        // // Read input from stdin
-        // use std::io::{self, Write};
-        // let mut input = String::new();
-        // io::stdin()
-        //     .read_line(&mut input)
-        //     .expect("Could not read from standard input.");
-
-        // use clap, rustyline for proper cli?
         let input = std::fs::read_to_string("programs/draft.kal").unwrap_or_default();
 
         if input.starts_with("exit") || input.starts_with("quit") {
