@@ -8,6 +8,9 @@ use clap::Parser;
 /// ```
 #[derive(Parser, Debug)]
 pub struct Args {
+    #[clap(long, alias = "input", default_value = "")]
+    pub program_path: String,
+
     // Display lexer output.
     #[clap(short, alias = "dl")]
     pub lexer: bool,

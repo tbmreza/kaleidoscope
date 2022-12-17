@@ -816,6 +816,7 @@ static EXTERNAL_FNS: [extern "C" fn(f64) -> f64; 2] = [putchard, printd];
 /// Entry point of the program; acts as a REPL.
 pub fn main() {
     let cli::Args {
+        program_path,
         lexer: display_lexer_output,
         parser: display_parser_output,
         compiler: display_compiler_output,
@@ -836,6 +837,8 @@ pub fn main() {
     fpm.add_promote_memory_to_register_pass();
     fpm.add_instruction_combining_pass();
     fpm.add_reassociate_pass();
+    // identify each section's gist in this codebase?
+    // https://mukulrathi.com/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/
 
     fpm.initialize();
 
@@ -845,9 +848,9 @@ pub fn main() {
         println!();
         print_flush!("?> ");
 
-        let input = std::fs::read_to_string("programs/draft.kal").unwrap_or_default();
+        let input = std::fs::read_to_string(&program_path).unwrap_or_default();
 
-        if input.starts_with("exit") || input.starts_with("quit") {
+        if input.starts_with("exit") || input.starts_with("quit") || input.is_empty() {
             break;
         } else if input.chars().all(char::is_whitespace) {
             continue;
