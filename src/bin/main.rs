@@ -6,6 +6,8 @@ use std::io::Write;
 use std::iter::Peekable;
 use std::ops::DerefMut;
 use std::str::Chars;
+use tracing::info;
+use tracing_subscriber;
 
 use inkwell::context::Context;
 use inkwell::passes::PassManager;
@@ -816,11 +818,15 @@ static EXTERNAL_FNS: [extern "C" fn(f64) -> f64; 2] = [putchard, printd];
 /// Entry point of the program; acts as a REPL.
 pub fn main() {
     let cli::Args {
-        program_path,
         lexer: display_lexer_output,
         parser: display_parser_output,
         compiler: display_compiler_output,
+        verbose,
+        ..
     } = cli::opts();
+    println!("print all log levels if verbose?: {:?}", verbose);
+   // Install global collector configured based on RUST_LOG env var.
+    tracing_subscriber::fmt::init();
 
     let context = Context::create();
     let module = context.create_module("repl");
@@ -848,9 +854,11 @@ pub fn main() {
         println!();
         print_flush!("?> ");
 
+        let cli::Args { program_path, .. } = cli::opts();
         let input = std::fs::read_to_string(&program_path).unwrap_or_default();
 
         if input.starts_with("exit") || input.starts_with("quit") || input.is_empty() {
+            info!(input, "Exiting.");
             break;
         } else if input.chars().all(char::is_whitespace) {
             continue;
