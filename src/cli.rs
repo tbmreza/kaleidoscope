@@ -22,6 +22,10 @@ pub struct Args {
     // Display compiler output.
     #[clap(short, alias = "dc")]
     pub compiler: bool,
+
+    // Display tracing logs.
+    #[clap(short)]
+    pub verbose: bool,
 }
 
 pub fn opts() -> Args {

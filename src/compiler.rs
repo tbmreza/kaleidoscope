@@ -4,6 +4,7 @@
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use tracing::{info, warn};
 
 use inkwell::builder::Builder;
 use inkwell::context::Context;
@@ -46,37 +47,70 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     fn create_entry_block_alloca(&self, name: &str) -> PointerValue<'ctx> {
         let builder = self.context.create_builder();
 
+        // Generate .dot files.
+        // self.fn_value().view_function_cfg();
         let entry = self.fn_value().get_first_basic_block().unwrap();
+        // println!("entry:");
+        // println!("{:#?}", entry);
 
         match entry.get_first_instruction() {
-            Some(first_instr) => builder.position_before(&first_instr),
-            None => builder.position_at_end(entry),
+            None => {
+                info!("entry doesn't have first instr.");
+                // append the whole entry (a basic block) to the builder?
+                builder.position_at_end(entry)
+            }
+            Some(first_instr) => {
+                info!("entry has first instr.");
+                // append first_instr to the builder?
+                builder.position_before(&first_instr)
+            }
         }
 
-        builder.build_alloca(self.context.f64_type(), name)
+        let res = builder.build_alloca(self.context.f64_type(), name);
+        // println!("res:");
+        // println!("{:#?}", res);
+        res
     }
 
     /// Compiles the specified `Expr` into an LLVM `FloatValue`.
+    /// Invariant: self.variables and self.constants are populated.
     fn compile_expr(&mut self, expr: &Expr) -> Result<FloatValue<'ctx>, &'static str> {
         match *expr {
             Expr::Number(nb) => Ok(self.context.f64_type().const_float(nb)),
 
-            Expr::Variable(ref name) => match (
-                self.variables.get(name.as_str()),
-                self.constants.get(name.as_str()),
-            ) {
-                (Some(var), _) => {
-                    let load_instr = self.builder.build_load(*var, name.as_str());
-                    Ok(load_instr.into_float_value())
+            Expr::Variable(ref name) => {
+                // do this during self.variables population? {
+                let float_default_name = "ZERO";
+                let float_default_value = match (
+                    self.variables.get(float_default_name),
+                    self.constants.get(float_default_name),
+                ) {
+                    (Some(var), _) => {
+                        let load_instr = self.builder.build_load(*var, float_default_name);
+                        Ok(load_instr.into_float_value())
+                    }
+                    _ => unreachable!(),
+                };
+                // }
+                match (
+                    self.variables.get(name.as_str()),
+                    self.constants.get(name.as_str()),
+                ) {
+                    (Some(var), _) => {
+                        let load_instr = self.builder.build_load(*var, name.as_str());
+                        Ok(load_instr.into_float_value())
+                    }
+                    (None, Some(var)) => {
+                        let load_instr = self.builder.build_load(*var, name.as_str());
+                        Ok(load_instr.into_float_value())
+                    }
+                    _ => {
+                        warn!(name, "Could not find a matching variable.");
+                        // trying this idea, see if it's better than panicking.
+                        float_default_value
+                    }
                 }
-                (None, Some(var)) => {
-                    let load_instr = self.builder.build_load(*var, name.as_str());
-                    Ok(load_instr.into_float_value())
-                }
-                _ => {
-                    panic!("Could not find a matching variable.");
-                }
-            },
+            }
 
             Expr::VarIn {
                 ref variables,
@@ -346,17 +380,23 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     /// Compiles the specified `Prototype` into an extern LLVM `FunctionValue`.
     fn compile_prototype(&self, proto: &Prototype) -> Result<FunctionValue<'ctx>, &'static str> {
-        let ret_type = self.context.f64_type();
-        let args_types = std::iter::repeat(ret_type)
-            .take(proto.args.len())
-            .map(|f| f.into())
-            .collect::<Vec<BasicMetadataTypeEnum>>();
-        let args_types = args_types.as_slice();
+        let fn_val = {
+            let ret_type = self.context.f64_type();
+            let ret_types = std::iter::repeat(ret_type).take(proto.args.len());
 
-        let fn_type = self.context.f64_type().fn_type(args_types, false);
-        let fn_val = self.module.add_function(proto.name.as_str(), fn_type, None);
+            let args_types = ret_types
+                .map(|f| f.into())
+                .collect::<Vec<BasicMetadataTypeEnum>>();
 
-        // set arguments names
+            let fn_type = self
+                .context
+                .f64_type()
+                .fn_type(args_types.as_slice(), false);
+
+            self.module.add_function(proto.name.as_str(), fn_type, None)
+        };
+
+        // Internally calls LLVMSetValueName to mutate arg.value.
         for (i, arg) in fn_val.get_param_iter().enumerate() {
             arg.into_float_value().set_name(proto.args[i].as_str());
         }
@@ -385,13 +425,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         // build variables map
         self.variables.reserve(proto.args.len());
 
+        // self.variables population for a varin program not here...
         for (i, arg) in function.get_param_iter().enumerate() {
             let arg_name = proto.args[i].as_str();
-            let alloca = self.create_entry_block_alloca(arg_name);
+            let alloca_ptr = self.create_entry_block_alloca(arg_name);
 
-            self.builder.build_store(alloca, arg);
+            self.builder.build_store(alloca_ptr, arg);
 
-            self.variables.insert(proto.args[i].clone(), alloca);
+            self.variables.insert(proto.args[i].clone(), alloca_ptr);
         }
 
         // compile body

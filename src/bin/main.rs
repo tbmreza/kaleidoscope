@@ -20,6 +20,8 @@ use kaleidoscope::types::{Expr, Function, Prototype};
 
 const ANONYMOUS_FUNCTION_NAME: &str = "anonymous";
 // OBJECTIVE: add global variables support
+// cleanup at startup? delete /tmp/cfganonymous*
+// tracing time format?
 
 // ======================================================================================
 // LEXER ================================================================================
@@ -825,7 +827,7 @@ pub fn main() {
         ..
     } = cli::opts();
     println!("print all log levels if verbose?: {:?}", verbose);
-   // Install global collector configured based on RUST_LOG env var.
+    // Install global collector configured based on RUST_LOG env var.
     tracing_subscriber::fmt::init();
 
     let context = Context::create();
