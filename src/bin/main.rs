@@ -6,7 +6,7 @@ use std::io::Write;
 use std::iter::Peekable;
 use std::ops::DerefMut;
 use std::str::Chars;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber;
 
 use inkwell::context::Context;
@@ -837,6 +837,12 @@ pub fn main() {
     // Create FPM
     let fpm = PassManager::create(&module);
 
+    // PICKUP
+    // [x] hello cpp rust ffi
+    // [x] explore https://github.com/jamesmth/llvm-plugin-rs
+    // [x] emit ll
+    // [ ] kal emit ll, helloplugin pipeline?
+    // emit ll, plugin does its work, pass back?
     fpm.add_instruction_combining_pass();
     fpm.add_reassociate_pass();
     fpm.add_gvn_pass();
@@ -845,8 +851,6 @@ pub fn main() {
     fpm.add_promote_memory_to_register_pass();
     fpm.add_instruction_combining_pass();
     fpm.add_reassociate_pass();
-    // identify each section's gist in this codebase?
-    // https://mukulrathi.com/create-your-own-programming-language/llvm-ir-cpp-api-tutorial/
 
     fpm.initialize();
 
@@ -866,6 +870,7 @@ pub fn main() {
             continue;
         }
 
+        // more elegant syntax?
         // Build precedence map
         let mut prec = HashMap::with_capacity(6);
 
@@ -909,13 +914,13 @@ pub fn main() {
                     Ok(function) => {
                         if display_compiler_output {
                             print_flush!("-> Expression compiled to IR:\n");
-                            function.print_to_stderr();
+                            let filename = "compiled.ll";
+                            let path = std::path::Path::new(filename);
 
-                            std::fs::File::create("out.ll")
-                                .expect("fs doesn't fail touching")
-                                // inkwell has the thing we need as private llvm_value field, what now?
-                                .write_all(format!("{:#?}", function).as_bytes())
-                                .expect("fs doesn't fail writing");
+                            match module.print_to_file(path) {
+                                Err(_) => warn!("failed printing module to file"),
+                                _ => info!("truncated ./{}", filename),
+                            }
                         }
 
                         if !is_anon {
@@ -961,132 +966,8 @@ pub fn main() {
 }
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
+    // pbt in unit tests
+    // so maybe delete this
     // reusable parser and compiler?
-    fn init_compiler(input: String) {
-        let display_lexer_output = true;
-        let display_parser_output = true;
-        let display_compiler_output = true;
-
-        let context = Context::create();
-        let module = context.create_module("repl");
-        let builder = context.create_builder();
-
-        // Create FPM
-        let fpm = PassManager::create(&module);
-
-        fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass();
-        fpm.add_gvn_pass();
-        fpm.add_cfg_simplification_pass();
-        fpm.add_basic_alias_analysis_pass();
-        fpm.add_promote_memory_to_register_pass();
-        fpm.add_instruction_combining_pass();
-        fpm.add_reassociate_pass();
-
-        fpm.initialize();
-
-        let mut previous_exprs = Vec::new();
-
-        println!();
-        print_flush!("?> ");
-
-        // make module
-        let module = context.create_module("tmp");
-
-        // recompile every previously parsed function into the new module
-        for prev in &previous_exprs {
-            Compiler::compile(&context, &builder, &fpm, &module, prev)
-                .expect("Cannot re-add previously compiled function.");
-        }
-
-        // Build precedence map
-        let mut prec = HashMap::with_capacity(6);
-
-        prec.insert('=', 2);
-        prec.insert('<', 10);
-        prec.insert('+', 20);
-        prec.insert('-', 20);
-        prec.insert('*', 40);
-        prec.insert('/', 40);
-
-        // if input.chars().all(char::is_whitespace) {
-        //     continue;
-        // }
-
-        // Parse and (optionally) display input
-        if display_lexer_output {
-            println!(
-                "-> Attempting to parse lexed input: \n{:?}\n",
-                Lexer::new(input.as_str()).collect::<Vec<Token>>()
-            );
-        }
-
-        let (name, is_anonymous) = match Parser::new(input, &mut prec).parse() {
-            Ok(fun) => {
-                let is_anon = fun.is_anon;
-
-                if display_parser_output {
-                    if is_anon {
-                        println!("-> Expression parsed: \n{:?}\n", fun.body);
-                    } else {
-                        println!("-> Function parsed: \n{:?}\n", fun);
-                    }
-                }
-
-                match Compiler::compile(&context, &builder, &fpm, &module, &fun) {
-                    Ok(function) => {
-                        if display_compiler_output {
-                            print_flush!("-> Expression compiled to IR:\n");
-                            function.print_to_stderr();
-                        }
-
-                        if !is_anon {
-                            // only add it now to ensure it is correct
-                            previous_exprs.push(fun);
-                        }
-
-                        (function.get_name().to_str().unwrap().to_string(), is_anon)
-                    }
-                    Err(err) => {
-                        panic!("!> Error compiling function: {}", err);
-                        // continue;
-                    }
-                }
-            }
-            Err(err) => {
-                panic!("!> Error parsing expression: {}", err);
-                // continue;
-            }
-        };
-
-        if is_anonymous {
-            let ee = module
-                .create_jit_execution_engine(OptimizationLevel::None)
-                .unwrap();
-
-            let maybe_fn =
-                unsafe { ee.get_function::<unsafe extern "C" fn() -> f64>(name.as_str()) };
-            let compiled_fn = match maybe_fn {
-                Ok(f) => f,
-                Err(err) => {
-                    panic!("!> Error during execution: {:?}", err);
-                    // continue;
-                }
-            };
-
-            unsafe {
-                println!("=> {}", compiled_fn.call());
-            }
-        }
-    }
-    #[test]
-    fn smoke() {
-        // let programs = os::ls("programs/*.kal");?
-        let programs = vec!["programs/binding.kal", "programs/varin.kal"];
-        for program in programs {
-            let input = std::fs::read_to_string(program).unwrap_or_default();
-            init_compiler(input);
-        }
-    }
 }

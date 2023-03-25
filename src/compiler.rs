@@ -406,7 +406,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     /// Compiles the specified `Function` into an LLVM `FunctionValue`.
-    fn compile_fn(&mut self) -> Result<FunctionValue<'ctx>, &'static str> {
+    // fn compile_fn(&mut self) -> Result<FunctionValue<'ctx>, &'static str> {
+    fn to_function_value(&mut self) -> Result<FunctionValue<'ctx>, &'static str> {
         let proto = &self.function.prototype;
         let function = self.compile_prototype(proto)?;
 
@@ -442,6 +443,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
         // return the whole thing after verification and optimization
         if function.verify(true) {
+            // interject your pass plugin here?
             self.fpm.run_on(&function);
 
             Ok(function)
@@ -456,6 +458,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     /// Compiles the specified `Function` in the given `Context` and using the specified `Builder`, `PassManager`, and `Module`.
     pub fn compile(
+    // pub fn new(
         context: &'ctx Context,
         builder: &'a Builder<'ctx>,
         pass_manager: &'a PassManager<FunctionValue<'ctx>>,
@@ -486,6 +489,6 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             variables: HashMap::new(),
         };
 
-        compiler.compile_fn()
+        compiler.to_function_value()
     }
 }
